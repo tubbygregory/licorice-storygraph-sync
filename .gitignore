@@ -8,3 +8,4 @@ bridge.txt
 kosync.json
 *.sqlite3
 *.sqlite3-*
+.bridge-state/

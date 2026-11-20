@@ -1,0 +1,30 @@
+{
+	servers {
+		timeouts {
+			read_header 5s
+			read_body 10s
+			write 55s
+			idle 30s
+		}
+	}
+}
+
+{$BRIDGE_HOST} {
+	@inkapp {
+		method POST
+		path /pair /sync
+	}
+
+	handle @inkapp {
+		request_body {
+			max_size 60000
+		}
+		reverse_proxy bridge:8765 {
+			request_buffers 60001
+		}
+	}
+
+	handle {
+		respond 404
+	}
+}

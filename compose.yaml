@@ -1,0 +1,39 @@
+services:
+  bridge:
+    build: .
+    user: "${BRIDGE_UID:?Set BRIDGE_UID in .env}:${BRIDGE_GID:?Set BRIDGE_GID in .env}"
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - ./.bridge-state/config:/state
+    secrets:
+      - storygraph_cookie
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - bridge
+    environment:
+      BRIDGE_HOST: "${BRIDGE_HOST:?Set BRIDGE_HOST in .env}"
+      NO_PROXY: bridge,localhost,127.0.0.1
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+secrets:
+  storygraph_cookie:
+    file: ./.bridge-state/storygraph-cookie.txt
+
+volumes:
+  caddy_data:
+  caddy_config:

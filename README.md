@@ -1,6 +1,6 @@
 # StoryGraph Sync for Xteink X4 Pro
 
-Bring your **Xteink X4 Pro** reading progress into **The StoryGraph**. Pair the reader with a local bridge, then sync matched books on demand or let the app check for progress while the reader is locked.
+Bring your **Xteink X4 Pro** reading progress into **The StoryGraph**. Pair the reader with a bridge you run, then sync matched books on demand or let the app check for progress while the reader is locked.
 
 **[Download the InkApp](https://github.com/tubbygregory/licorice-storygraph-sync/raw/refs/heads/main/storygraph.xtapp)** · **[Download the bridge files](https://github.com/tubbygregory/licorice-storygraph-sync/archive/refs/heads/main.zip)** · [Jump to setup](#get-started)
 
@@ -11,11 +11,13 @@ Bring your **Xteink X4 Pro** reading progress into **The StoryGraph**. Pair the 
 | You’ll need | Details |
 | --- | --- |
 | **Xteink X4 Pro** | Stock XTOS Licorice build `26111201` or later. |
-| **Computer on your local network** | Python 3.10 or later. Keep the bridge running while you sync. |
+| **Computer or server** | Python 3.10 or later for local setup, or Docker Compose v2 on a Linux server. Keep the bridge running while you sync. |
 | **StoryGraph account** | An active browser session. The bridge uses that session to send progress through StoryGraph’s website. |
 
 > [!NOTE]
 > This is an unofficial integration. The screen renders and sync tests use simulated responses. Physical hardware and live StoryGraph writes remain unverified.
+
+Follow the steps below to run the bridge on Windows, macOS, or Linux. To sync while your computer is off, use the [server setup guide](docs/server-setup.md) to run the bridge on a home server or VPS you manage.
 
 ## Get started
 
@@ -27,13 +29,24 @@ If you’re upgrading, update both the InkApp and the bridge. Keep your existing
 
 ### 2. Start the bridge on your computer
 
-Extract the [project ZIP](https://github.com/tubbygregory/licorice-storygraph-sync/archive/refs/heads/main.zip) and open the extracted folder in a Bash terminal. Create a Python environment and generate a pairing token.
+Extract the [project ZIP](https://github.com/tubbygregory/licorice-storygraph-sync/archive/refs/heads/main.zip) and open a terminal in the extracted folder. Run the commands for your operating system to create a Python environment and generate a pairing token.
+
+**Windows PowerShell**
+
+```powershell
+py -3 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+If your Python installation provides `python` instead of `py`, run `python -m venv .venv` as the first command.
+
+**macOS or Linux**
 
 ```bash
-python -m venv .venv
-. .venv/bin/activate
-python -m pip install -r requirements.txt
-python -c 'import secrets; print(secrets.token_urlsafe(32))'
+python3 -m venv .venv
+./.venv/bin/python -m pip install -r requirements.txt
+./.venv/bin/python -c 'import secrets; print(secrets.token_urlsafe(32))'
 ```
 
 Create a file named `bridge.json` in that folder and replace the placeholder with the generated token.
@@ -47,12 +60,39 @@ Create a file named `bridge.json` in that folder and replace the placeholder wit
 
 While signed in to StoryGraph, open **Developer Tools → Network** in your browser and reload a StoryGraph book page. Select the request to `app.thestorygraph.com` and copy the **Cookie** value under **Request Headers**. It should contain `_storygraph_session`. Keep this value private.
 
-Run the following commands, paste the cookie at the prompt, and replace `192.168.1.20` with your computer’s local network address.
+Find your computer’s IPv4 address on the local network the reader will join.
+
+- **Windows** — Run `ipconfig` and look for **IPv4 Address** under your active Wi-Fi or Ethernet adapter.
+- **macOS** — Open **System Settings → Network**, select the active connection, and check **Details → TCP/IP**.
+- **Linux** — Run `ip -brief -4 address` and use the address on your active Wi-Fi or Ethernet interface, without the trailing `/…`.
+
+Replace `192.168.1.20` with that address in the command for your operating system. Paste the Cookie value at the hidden prompt and press Enter.
+
+**Windows PowerShell**
+
+```powershell
+$cookie = Read-Host "StoryGraph Cookie header" -AsSecureString
+try {
+    $env:STORYGRAPH_COOKIE = [System.Net.NetworkCredential]::new('', $cookie).Password
+    .\.venv\Scripts\python.exe bridge.py --bind 192.168.1.20
+}
+finally {
+    Remove-Item Env:\STORYGRAPH_COOKIE -ErrorAction SilentlyContinue
+    $cookie.Dispose()
+    Remove-Variable cookie
+}
+```
+
+**macOS or Linux (Bash or Zsh)**
 
 ```bash
-read -rs -p 'StoryGraph Cookie header: ' STORYGRAPH_COOKIE
-export STORYGRAPH_COOKIE
-python bridge.py --bind 192.168.1.20
+(
+  printf 'StoryGraph Cookie header: '
+  IFS= read -rs STORYGRAPH_COOKIE
+  printf '\n'
+  export STORYGRAPH_COOKIE
+  ./.venv/bin/python bridge.py --bind 192.168.1.20
+)
 ```
 
 Leave the bridge running on your private network. The reader only needs the bridge address and pairing token.
@@ -60,7 +100,7 @@ Leave the bridge running on your private network. The reader only needs the brid
 ### 3. Pair the reader and verify the first sync
 
 1. Open **StoryGraph Sync → StoryGraph setup**.
-2. Enter the **Bridge address**, such as `http://192.168.1.20:8765`, and the token from `bridge.json`. Tap **Connect and save**.
+2. Enter the **Bridge address**, such as `http://192.168.1.20:8765` at home or `https://sync.example.com` for a server, and the token from `bridge.json`. Tap **Connect and save**.
 3. Read a few pages on the X4 Pro, then return to **StoryGraph Sync** and tap **Sync now**. Open the book in StoryGraph to verify your first update.
 4. For automatic sync, tap **Enable automatic sync** and confirm the firmware prompt. This makes StoryGraph Sync your lock screen. It checks for progress when the reader locks and on roughly 15-minute wakes while Wi-Fi is available.
 
@@ -84,7 +124,7 @@ The picture appears while the reader is locked and sync continues in the backgro
 
 | What you see | What to check |
 | --- | --- |
-| **Could not contact bridge** or **Bridge unavailable** | Keep the bridge running, confirm both devices can reach each other on the local network, and use the computer’s address with port `8765`. |
+| **Could not contact bridge** or **Bridge unavailable** | Keep the bridge running. For a local bridge, check the local IP and port `8765`. For a remote bridge, check the HTTPS address and the server logs. |
 | **Bridge token rejected** or **Check bridge token** | Re-enter the exact token from `bridge.json`. |
 | **Check bridge version** | Update the InkApp and the bridge files together. |
 | **No syncable StoryGraph match** | Check that the EPUB has the correct title and author and that a matching edition exists in StoryGraph. The bridge skips uncertain matches. |

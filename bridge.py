@@ -371,9 +371,9 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def save_links(path, links):
-    config = json.loads(path.read_text())
+    config = json.loads(path.read_text(encoding="utf-8-sig"))
     config["books"] = links
-    with tempfile.NamedTemporaryFile(mode="w", dir=path.parent, delete=False) as staged:
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent, delete=False) as staged:
         temporary = Path(staged.name)
         try:
             json.dump(config, staged, indent=2)
@@ -399,19 +399,29 @@ class Bridge(HTTPServer):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=Path("bridge.json"))
+    parser.add_argument("--cookie-file", type=Path, help="read the StoryGraph Cookie header from this file")
     parser.add_argument("--bind", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
     args = parser.parse_args()
-    config = json.loads(args.config.read_text())
+    config = json.loads(args.config.read_text(encoding="utf-8-sig"))
     token = config["token"]
     if not re.fullmatch(r"[A-Za-z0-9_-]{32,}", token):
         parser.error("token must be at least 32 URL-safe characters")
     links = {reader_id: str(UUID(edition)) for reader_id, edition in config["books"].items()}
     if len(set(links.values())) != len(links):
         parser.error("each StoryGraph edition must be mapped at most once")
-    cookies = os.environ.get("STORYGRAPH_COOKIE", "").strip()
-    if "_storygraph_session=" not in cookies:
-        parser.error("set STORYGRAPH_COOKIE to your logged-in StoryGraph cookie header")
+    try:
+        cookie = args.cookie_file.read_text(encoding="utf-8-sig") if args.cookie_file else os.environ.get(
+            "STORYGRAPH_COOKIE", ""
+        )
+    except (OSError, UnicodeError):
+        parser.error("could not read the StoryGraph cookie file")
+    cookies = cookie.strip()
+    if "\n" in cookies or "\r" in cookies or not any(
+        part.strip().startswith("_storygraph_session=") and part.strip() != "_storygraph_session="
+        for part in cookies.split(";")
+    ):
+        parser.error("provide a valid StoryGraph Cookie header using STORYGRAPH_COOKIE or --cookie-file")
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     with Bridge((args.bind, args.port), Handler) as server, requests.Session() as session:
         server.auth = f"Bearer {token}".encode()

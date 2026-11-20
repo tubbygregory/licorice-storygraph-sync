@@ -7,6 +7,9 @@ computer running the local bridge. X4 Classic and other models are
 unverified. When upgrading, replace both the InkApp package and the
 bridge script to enable book matching.
 
+See README.md for Windows, macOS, and Linux setup commands. To keep
+your PC off during sync, see docs/server-setup.md.
+
 1. Copy storygraph.xtapp to the SD card root. Open it from All Files
    to install, then launch StoryGraph Sync from the Ink App drawer.
 2. On the computer, create bridge.json in this folder:
