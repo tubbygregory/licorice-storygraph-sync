@@ -1,16 +1,21 @@
 # StoryGraph Sync for Xteink X4 Pro
 
-Sync your reading progress from an **Xteink X4 Pro running XTOS Licorice** to [The StoryGraph](https://thestorygraph.com/). Connect the reader to a local bridge once, then the app uses the book metadata available on the device to find matches automatically. You can sync on demand or let the app check for progress while the reader is locked.
+Bring your **Xteink X4 Pro** reading progress into **The StoryGraph**. Pair the reader with a local bridge, then sync matched books on demand or let the app check for progress while the reader is locked.
 
-[Download the InkApp](https://github.com/tubbygregory/licorice-storygraph-sync/raw/refs/heads/main/storygraph.xtapp) · [Download the bridge files](https://github.com/tubbygregory/licorice-storygraph-sync/archive/refs/heads/main.zip) · [View the setup screens](docs/setup-workflow.png)
+**[Download the InkApp](https://github.com/tubbygregory/licorice-storygraph-sync/raw/refs/heads/main/storygraph.xtapp)** · **[Download the bridge files](https://github.com/tubbygregory/licorice-storygraph-sync/archive/refs/heads/main.zip)** · [Jump to setup](#get-started)
+
+![Simulated Xteink X4 Pro screens showing StoryGraph Sync controls, bridge setup, and a custom lock-screen picture](docs/readme-preview.png)
 
 ## Before you start
 
-- **Reader** — Xteink X4 Pro with stock XTOS Licorice build `26111201` or later.
-- **Computer** — Python 3.10 or later and a computer that can stay on while you sync. The reader needs Wi-Fi access to this computer.
-- **Account** — A StoryGraph account and an active browser session. The bridge uses your own session to submit progress through StoryGraph’s website.
+| You’ll need | Details |
+| --- | --- |
+| **Xteink X4 Pro** | Stock XTOS Licorice build `26111201` or later. |
+| **Computer on your local network** | Python 3.10 or later. Keep the bridge running while you sync. |
+| **StoryGraph account** | An active browser session. The bridge uses that session to send progress through StoryGraph’s website. |
 
-This is an unofficial integration. The project has been tested with simulated reader and StoryGraph responses. Physical hardware and live StoryGraph writes remain unverified.
+> [!NOTE]
+> This is an unofficial integration. The screen renders and sync tests use simulated responses. Physical hardware and live StoryGraph writes remain unverified.
 
 ## Get started
 
@@ -52,21 +57,16 @@ python bridge.py --bind 192.168.1.20
 
 Leave the bridge running on your private network. The reader only needs the bridge address and pairing token.
 
-### 3. Connect the reader and try a sync
+### 3. Pair the reader and verify the first sync
 
 1. Open **StoryGraph Sync → StoryGraph setup**.
 2. Enter the **Bridge address**, such as `http://192.168.1.20:8765`, and the token from `bridge.json`. Tap **Connect and save**.
-3. Read a few pages on the X4 Pro, then return to **StoryGraph Sync** and tap **Sync now**. Check the book’s progress in StoryGraph to verify your first update.
-4. For hands-off sync, tap **Enable automatic sync** and confirm the firmware prompt. This makes StoryGraph Sync your lock screen. It checks for progress when the reader locks and on roughly 15-minute wakes while Wi-Fi is available.
+3. Read a few pages on the X4 Pro, then return to **StoryGraph Sync** and tap **Sync now**. Open the book in StoryGraph to verify your first update.
+4. For automatic sync, tap **Enable automatic sync** and confirm the firmware prompt. This makes StoryGraph Sync your lock screen. It checks for progress when the reader locks and on roughly 15-minute wakes while Wi-Fi is available.
 
-<details>
-<summary>See the setup screens</summary>
+![Three simulated reader screens showing StoryGraph setup, the on-screen keyboard for the bridge address, and the Bridge connected confirmation](docs/pairing-screens.png)
 
-<img src="docs/setup-workflow.png" alt="Six Xteink X4 Pro screens showing bridge setup, a progress sync, picture selection, and the finished lock screen" width="680">
-
-The preview uses the app’s drawing code with a simulated firmware keyboard and network.
-
-</details>
+[View the full setup and lock-screen walkthrough](docs/setup-workflow.png).
 
 ## How book matching works
 
