@@ -98,13 +98,6 @@ function on_draw(c, g)
   if setup_open then return draw_setup(c, g) end
   draw_text(c, g, 24, "StoryGraph Sync")
   draw_text(c, g, 73, status)
-  local book = current_book(c)
-  if book then
-    draw_text(c, g, 130, "Reader book ID")
-    draw_text(c, g, 167, tostring(book.id))
-  else
-    draw_text(c, g, 130, "Open a book to see its ID")
-  end
   draw_button(c, g, 262, "Sync now")
   draw_button(c, g, 362, "Enable automatic sync")
   draw_button(c, g, 462, "Disable automatic sync")

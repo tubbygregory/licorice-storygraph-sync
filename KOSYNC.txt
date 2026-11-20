@@ -5,6 +5,9 @@ firmware's built-in sync. It requires a computer running the bridge and
 a Licorice build that sends progress to a custom KOReader Sync server.
 Automatic sending by Licorice has not been verified on hardware.
 
+This route uses explicit per-book mappings. For automatic book matching,
+use the InkApp lock screen described in README.txt.
+
 1. Install requirements.txt and set STORYGRAPH_COOKIE as described in
    step 2 of README.txt. Use kosync.py in place of bridge.py.
 2. Create kosync.json on the computer:

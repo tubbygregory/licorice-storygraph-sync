@@ -4,7 +4,8 @@ StoryGraph Sync for Xteink X4 Pro
 Requires stock XTOS Licorice with Ink Apps and lock-screen networking
 (API 2.26, firmware build 26111201 or later), Wi-Fi, and an always-on
 computer running the local bridge. X4 Classic and other models are
-unverified.
+unverified. When upgrading, replace both the InkApp package and the
+bridge script to enable book matching.
 
 1. Copy storygraph.xtapp to the SD card root. Open it from All Files
    to install, then launch StoryGraph Sync from the Ink App drawer.
@@ -43,17 +44,17 @@ unverified.
    confirms the reader can reach and authenticate to the bridge.
    Existing bridge.txt settings still work.
 
-4. Open a book in the reader. Mark the matching StoryGraph edition
-   Currently Reading. In StoryGraph setup on the reader, tap Link
-   current book and type the edition's /books/ URL or UUID. The
-   bridge checks the edition's progress form and saves the mapping.
-   Repeat for each book.
+4. Read a few pages on the X4 Pro. Open StoryGraph Sync, tap Sync now,
+   and verify the percentage on StoryGraph. The app uses the book
+   metadata Licorice exposes. The bridge checks for an exact title and
+   author match, or verifies the ISBN when the reader supplies one. It skips ambiguous matches and books with insufficient
+   metadata. Existing book mappings in bridge.json are retained.
 
-5. Tap Back then Sync now and verify the percentage on StoryGraph.
-   Tap Enable automatic sync and confirm the firmware prompt to make
-   StoryGraph Sync the default lock screen. It checks at lock and on
-   roughly 15-minute wakes while Wi-Fi is available. Tap Disable
-   automatic sync or choose another lock screen to turn this off.
+5. In StoryGraph Sync, tap Enable automatic sync and confirm the
+   firmware prompt to make StoryGraph Sync the default lock screen.
+   The app checks at lock and on roughly 15-minute wakes while Wi-Fi is
+   available. Tap Disable automatic sync or choose another lock screen
+   to turn this off.
 
 Custom lock-screen picture
 --------------------------
@@ -74,13 +75,14 @@ Custom lock-screen picture
 This setting applies to the InkApp lock screen. The built-in KOReader
 Sync mode uses the device's regular wallpaper settings.
 
-The bridge uses integer percentages, only advances an edition, and
-checks up to two changed mapped books per pass. It reads the existing
-progress form and leaves status changes and rereads to StoryGraph.
-For a reread, update your StoryGraph reading entry and restart the bridge
-to clear its in-memory cache. An HTTP 200 on the device means the bridge
-accepted the snapshot; verify your first update on StoryGraph. There is
-no firmware hook here for syncing during ordinary page turns.
+The bridge uses integer percentages and only advances progress. It
+checks one new match or up to two already-mapped books per pass. A newly
+matched book can be marked Currently Reading when StoryGraph shows it
+as untracked and the progress is below 100%. Finishing a book does not
+change its reading status. For a reread, update your StoryGraph reading
+entry and restart the bridge to clear its in-memory cache. Verify your
+first update on StoryGraph. Sync runs when requested or on a lock-screen
+wake.
 
 The StoryGraph form is unofficial and may change. This project has been
 checked with mocks. Live StoryGraph writes and physical hardware use
