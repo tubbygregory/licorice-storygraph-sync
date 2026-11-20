@@ -62,6 +62,23 @@ unverified.
    device locked retries missed updates. Disable automatic sync or
    choose a different lock screen to turn this off.
 
+Custom lock-screen picture
+--------------------------
+
+1. Connect the reader over USB and copy one or more JPEGs to
+   XTApps/storygraph/files/ on the SD card. Use filenames without
+   spaces, such as forest.jpg. Each image must be at most 480 x 800
+   pixels and 512 KiB. A 480 x 800 portrait JPEG fills the screen.
+2. Open StoryGraph Sync, tap Choose lock screen picture, and tap a
+   filename. Lock the reader to see the picture. Automatic sync
+   continues while the picture is displayed.
+3. To go back to the built-in StoryGraph Sync display, select
+   Use default screen in the picture picker. A missing or unreadable
+   picture also falls back to that display.
+
+This setting applies to the InkApp lock screen. The built-in KOReader
+Sync mode uses the device's regular wallpaper settings.
+
 The bridge uses integer percentages, only advances an edition, and
 checks up to two changed mapped books per pass. It reads the existing
 progress form and leaves status changes and rereads to StoryGraph.
@@ -79,8 +96,8 @@ Rebuild from source
 
 The separate foreground and lock entry points use the shared sync.lua:
 
-  cat sync.lua foreground.lua > app/index.lua
-  cat sync.lua locked.lua > app/lockscreen.lua
+  cat sync.lua wallpaper.lua foreground.lua > app/index.lua
+  cat sync.lua wallpaper.lua locked.lua > app/lockscreen.lua
   python /path/to/touch-licorice-apps/xtpack.py app -o storygraph.xtapp
 
 Packer and XTApp API references:
