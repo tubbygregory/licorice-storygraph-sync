@@ -15,13 +15,19 @@ local function snapshot()
   return progress
 end
 
+local function read_bridge(c)
+  local ok, config = pcall(function() return c.storage:read("bridge.txt") end)
+  if ok and type(config) == "string" then
+    return config:match("^%s*(https?://[^%s]+)%s+([%w_-]+)%s*$")
+  end
+end
+
 local function sync()
   if pending then return end
   local ok, started = pcall(function()
-    local config = ctx.storage:read("bridge.txt") or ""
-    local url, token = config:match("^%s*(https?://[^%s]+)%s+([%w_-]+)%s*$")
+    local url, token = read_bridge(ctx)
     if not url or #token < 32 then
-      status = "Set up bridge.txt"
+      status = "Connect your StoryGraph bridge"
       return false
     end
     if not ctx.net or not ctx.reader then

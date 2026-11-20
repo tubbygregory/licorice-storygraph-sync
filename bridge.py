@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import re
+import tempfile
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from uuid import UUID
@@ -16,7 +17,7 @@ SITE = "https://app.thestorygraph.com"
 MAX_BODY = 60_000
 
 
-def storygraph_progress(session, edition, percent):
+def progress_form(session, edition):
     book_url = f"{SITE}/books/{edition}"
     page = session.get(book_url, timeout=5, allow_redirects=False)
     if page.status_code != 200:
@@ -27,7 +28,11 @@ def storygraph_progress(session, edition, percent):
     previous = form and form.select_one('input[name="read_status[last_reached_percent]"][value]')
     if not (form and csrf and previous):
         raise ValueError("progress form unavailable; check sign-in and Currently Reading status")
-    last = int(previous["value"] or "0")
+    return book_url, form, csrf, int(previous["value"] or "0")
+
+
+def storygraph_progress(session, edition, percent):
+    book_url, form, csrf, last = progress_form(session, edition)
     if percent <= last:
         return
 
@@ -69,23 +74,31 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def do_POST(self):
-        if self.path != "/sync":
+        if self.path not in ("/sync", "/pair", "/link"):
             self.respond(404, {})
             return
         auth = self.headers.get("Authorization", "")
         if not hmac.compare_digest(auth.encode(), self.server.auth):
             self.respond(401, {})
             return
+        if self.path == "/pair":
+            self.respond(200, {})
+            return
         try:
             length = int(self.headers.get("Content-Length", "0"))
             if not 0 < length <= MAX_BODY:
                 raise ValueError()
             data = json.loads(self.rfile.read(length))
-            if not isinstance(data, dict) or any(
-                type(value) is not int or not 0 <= value <= 100 for value in data.values()
-            ):
+            if not isinstance(data, dict):
                 raise ValueError()
         except (ValueError, TimeoutError):
+            self.respond(400, {"error": "invalid book progress"})
+            return
+
+        if self.path == "/link":
+            self.link_book(data)
+            return
+        if any(type(value) is not int or not 0 <= value <= 100 for value in data.values()):
             self.respond(400, {"error": "invalid book progress"})
             return
 
@@ -117,6 +130,48 @@ class Handler(BaseHTTPRequestHandler):
         self.respond(502 if errors else 200, {"checked": attempted, "deferred": deferred, "errors": errors})
 
 
+    def link_book(self, data):
+        reader_id = data.get("reader_id")
+        try:
+            if not isinstance(reader_id, str) or not 0 < len(reader_id) <= 256:
+                raise ValueError()
+            edition = str(UUID(data.get("edition", "")))
+        except (TypeError, AttributeError, ValueError):
+            self.respond(400, {"error": "invalid book or edition ID"})
+            return
+        if any(key != reader_id and value == edition for key, value in self.server.links.items()):
+            self.respond(409, {"error": "edition already linked to another book"})
+            return
+        try:
+            progress_form(self.server.session, edition)
+        except (ValueError, requests.RequestException):
+            self.respond(502, {"error": "StoryGraph progress form unavailable"})
+            return
+        links = {**self.server.links, reader_id: edition}
+        try:
+            save_links(self.server.config_path, links)
+        except (OSError, ValueError):
+            logging.exception("Could not save book links")
+            self.respond(500, {"error": "could not save links"})
+            return
+        self.server.links = links
+        self.respond(200, {})
+
+
+def save_links(path, links):
+    config = json.loads(path.read_text())
+    config["books"] = links
+    with tempfile.NamedTemporaryFile(mode="w", dir=path.parent, delete=False) as staged:
+        temporary = Path(staged.name)
+        try:
+            json.dump(config, staged, indent=2)
+            staged.write("\n")
+            staged.close()
+            temporary.replace(path)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+
 class Bridge(HTTPServer):
     def get_request(self):
         connection, address = super().get_request()
@@ -143,6 +198,7 @@ def main():
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     with Bridge((args.bind, args.port), Handler) as server, requests.Session() as session:
         server.auth = f"Bearer {token}".encode()
+        server.config_path = args.config
         server.links = links
         server.confirmed = {}
         server.session = session

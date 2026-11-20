@@ -15,13 +15,19 @@ local function snapshot()
   return progress
 end
 
+local function read_bridge(c)
+  local ok, config = pcall(function() return c.storage:read("bridge.txt") end)
+  if ok and type(config) == "string" then
+    return config:match("^%s*(https?://[^%s]+)%s+([%w_-]+)%s*$")
+  end
+end
+
 local function sync()
   if pending then return end
   local ok, started = pcall(function()
-    local config = ctx.storage:read("bridge.txt") or ""
-    local url, token = config:match("^%s*(https?://[^%s]+)%s+([%w_-]+)%s*$")
+    local url, token = read_bridge(ctx)
     if not url or #token < 32 then
-      status = "Set up bridge.txt"
+      status = "Connect your StoryGraph bridge"
       return false
     end
     if not ctx.net or not ctx.reader then
@@ -127,8 +133,147 @@ local function save_wallpaper(c, name)
   end)
   return ok and saved
 end
+local setup_open, editing = false, false
+local bridge_url, bridge_token
 
-local PICTURES_PER_PAGE = 8
+local function trim(value)
+  return value:match("^%s*(.-)%s*$")
+end
+
+local function edit_field(c, label, value, limit, accept)
+  editing = true
+  local ok, editor = pcall(function()
+    return c.input:edit({
+      rect = {x = 20, y = 175, w = 440, h = 48},
+      text = value or "",
+      placeholder = label,
+      max_chars = limit,
+      multiline = false,
+      on_end = function(context, text, reason)
+        editing = false
+        if (reason == "enter" or reason == nil) and type(text) == "string" then accept(context, trim(text)) end
+        context:invalidate()
+      end,
+    })
+  end)
+  if not ok or not editor then
+    editing = false
+    status = "Could not open keyboard"
+  end
+end
+
+local function current_book(c)
+  local ok, book = pcall(function() return c.reader:current() end)
+  if ok and type(book) == "table" and book.id then return book end
+end
+
+local function connect_request(c, path, payload, finished)
+  if pending then return end
+  if not bridge_url or not bridge_url:match("^https?://[^%s/@?#]+/*$") then
+    status = "Enter the bridge base URL"
+    return
+  end
+  if not bridge_token or #bridge_token < 32 or not bridge_token:match("^[%w_-]+$") then
+    status = "Enter a valid bridge token"
+    return
+  end
+  pending = true
+  status = "Connecting..."
+  local ok, job = pcall(function()
+    return c.net:request({
+      url = bridge_url:gsub("/+$", "") .. path,
+      method = "POST",
+      timeout_ms = 15000,
+      headers = {["Authorization"] = "Bearer " .. bridge_token, ["Content-Type"] = "application/json"},
+      body = c.json:encode(payload),
+    }, function(context, reply)
+      pending = false
+      local code = reply and tonumber(reply.status or reply.code)
+      if code == 200 then
+        finished(context)
+      elseif code == 401 then
+        status = "Bridge token rejected"
+      elseif code == 409 then
+        status = "Edition is already linked"
+      elseif code == 502 then
+        status = "Check sign-in and Currently Reading"
+      elseif code == 404 then
+        status = "Update the bridge on your computer"
+      else
+        status = "Bridge request failed"
+      end
+      context:invalidate()
+    end)
+  end)
+  if not ok or not job then
+    pending = false
+    status = "Could not contact bridge"
+  end
+end
+
+local function open_setup(c)
+  bridge_url, bridge_token = read_bridge(c)
+  setup_open = true
+  status = bridge_url and "Bridge settings saved" or "Start the bridge on your computer"
+end
+
+local function draw_button(c, g, y, label)
+  g:rect(12, y - 10, 456, 44)
+  draw_text(c, g, y, label)
+end
+
+local function draw_setup(c, g)
+  draw_text(c, g, 24, "StoryGraph setup")
+  draw_text(c, g, 72, status)
+  if editing then return end
+  draw_button(c, g, 150, "Bridge address")
+  if bridge_url then draw_text(c, g, 196, bridge_url:sub(1, 36)) end
+  draw_button(c, g, 250, bridge_token and "Change bridge token" or "Enter bridge token")
+  draw_button(c, g, 350, "Connect and save")
+  draw_button(c, g, 450, "Link current book")
+  draw_button(c, g, 550, "Back")
+end
+
+local function setup_input(c, y)
+  if pending then return end
+  if y >= 130 and y < 220 then
+    edit_field(c, "http://192.168.1.20:8765", bridge_url, 128, function(_, value) bridge_url = value end)
+  elseif y >= 230 and y < 310 then
+    edit_field(c, "Bridge token", "", 128, function(_, value) bridge_token = value end)
+  elseif y >= 330 and y < 410 then
+    connect_request(c, "/pair", {}, function(context)
+      local ok, saved = pcall(function()
+        context.storage:write("bridge.txt", bridge_url .. "\n" .. bridge_token .. "\n")
+        local url, token = read_bridge(context)
+        return url == bridge_url and token == bridge_token
+      end)
+      status = ok and saved and "Bridge connected" or "Could not save settings"
+    end)
+  elseif y >= 430 and y < 510 then
+    local book = current_book(c)
+    local url, token = read_bridge(c)
+    if not book then
+      status = "Open a book on the reader first"
+    elseif not url or url ~= bridge_url or token ~= bridge_token then
+      status = "Connect and save the bridge first"
+    else
+      edit_field(c, "StoryGraph edition URL or ID", "", 160, function(context, value)
+        local edition = value:match("/books/([%x%-]+)") or value
+        if #edition ~= 36 or not edition:match("^[%x%-]+$") then
+          status = "Enter a StoryGraph edition ID"
+        else
+          connect_request(context, "/link", {reader_id = tostring(book.id), edition = edition},
+            function() status = "Book linked to StoryGraph" end)
+        end
+      end)
+    end
+  elseif y >= 530 and y < 610 then
+    setup_open = false
+    status = "Ready"
+  end
+end
+
+local PICTURES_PER_PAGE = 7
 local pictures, page
 
 local function open_pictures(c)
@@ -143,7 +288,8 @@ end
 
 local function draw_pictures(c, g)
   draw_text(c, g, 24, "Lock screen picture")
-  draw_text(c, g, 72, "Copy JPEGs to the app SD folder")
+  draw_text(c, g, 72, status)
+  if editing then return end
   if #pictures == 0 then draw_text(c, g, 140, "No JPEGs found") end
   local selected = selected_wallpaper(c)
   for row = 1, PICTURES_PER_PAGE do
@@ -153,12 +299,47 @@ local function draw_pictures(c, g)
     if #name > 34 then label = label .. "..." end
     draw_text(c, g, 130 + (row - 1) * 52, (name == selected and "* " or "") .. label)
   end
-  if #pictures > PICTURES_PER_PAGE then draw_text(c, g, 560, "Next page") end
-  draw_text(c, g, 625, "Use default screen")
-  draw_text(c, g, 690, "Back")
+  if #pictures > PICTURES_PER_PAGE then draw_button(c, g, 510, "Next page") end
+  draw_button(c, g, 560, "Import JPEG from URL")
+  draw_button(c, g, 625, "Use default screen")
+  draw_button(c, g, 690, "Back")
+end
+
+local function import_picture(c, url)
+  if not url:match("^https://[^%s/@?#]+/[^%s]+$") then
+    status = "Enter a direct HTTPS JPEG URL"
+    return
+  end
+  local name = selected_wallpaper(c) == "downloaded.jpg" and "downloaded-alt.jpg" or "downloaded.jpg"
+  pending, status = true, "Downloading picture..."
+  local ok, job = pcall(function()
+    return c.net:request({
+      url = url,
+      timeout_ms = 20000,
+      save = {to = "files", name = name},
+    }, function(context, reply)
+      pending = false
+      local code = reply and tonumber(reply.status or reply.code)
+      local image = code == 200 and reply.saved and load_wallpaper(context, name)
+      if image then
+        pcall(function() image:release() end)
+        status = save_wallpaper(context, name) and "Lock screen picture saved" or "Could not save picture"
+        pictures = nil
+      else
+        pcall(function() context.storage:remove(name) end)
+        status = "Use a direct JPEG up to 480 x 800"
+        open_pictures(context)
+      end
+      context:invalidate()
+    end)
+  end)
+  if not ok or not job then
+    pending, status = false, "Could not start download"
+  end
 end
 
 local function pick_picture(c, y)
+  if pending then return end
   if y >= 120 and y < 120 + PICTURES_PER_PAGE * 52 then
     local row = (y - 120) // 52 + 1
     local name = pictures[(page - 1) * PICTURES_PER_PAGE + row]
@@ -171,8 +352,10 @@ local function pick_picture(c, y)
       status = "Use a JPEG up to 480 x 800"
     end
     pictures = nil
-  elseif y >= 550 and y < 610 and #pictures > PICTURES_PER_PAGE then
+  elseif y >= 495 and y < 545 and #pictures > PICTURES_PER_PAGE then
     page = page % math.ceil(#pictures / PICTURES_PER_PAGE) + 1
+  elseif y >= 550 and y < 610 then
+    edit_field(c, "Direct HTTPS JPEG URL", "", 512, import_picture)
   elseif y >= 615 and y < 675 then
     status = save_wallpaper(c) and "Default lock screen selected" or "Could not save choice"
     pictures = nil
@@ -186,25 +369,30 @@ function on_load() end
 function on_draw(c, g)
   g:clear(0)
   if pictures then return draw_pictures(c, g) end
+  if setup_open then return draw_setup(c, g) end
   draw_text(c, g, 24, "StoryGraph Sync")
   draw_text(c, g, 73, status)
-  local ok, book = pcall(function() return c.reader:current() end)
-  if ok and type(book) == "table" and book.id then
+  local book = current_book(c)
+  if book then
     draw_text(c, g, 130, "Reader book ID")
     draw_text(c, g, 167, tostring(book.id))
   else
     draw_text(c, g, 130, "Open a book to see its ID")
   end
-  draw_text(c, g, 262, "Sync now")
-  draw_text(c, g, 362, "Enable automatic sync")
-  draw_text(c, g, 462, "Disable automatic sync")
-  draw_text(c, g, 562, "Choose lock screen picture")
+  draw_button(c, g, 262, "Sync now")
+  draw_button(c, g, 362, "Enable automatic sync")
+  draw_button(c, g, 462, "Disable automatic sync")
+  draw_button(c, g, 562, "Choose lock screen picture")
+  draw_button(c, g, 662, "StoryGraph setup")
 end
 
 function on_input(c, event)
+  if editing then return false end
   if event.type ~= "pointer" or event.phase ~= "up" then return false end
   local y = event.y or 0
-  if pictures then
+  if setup_open then
+    setup_input(c, y)
+  elseif pictures then
     pick_picture(c, y)
   elseif y >= 240 and y < 320 then
     sync()
@@ -217,7 +405,10 @@ function on_input(c, event)
     end)
     status = ok and result ~= false and "Automatic sync disabled" or "Could not disable sync"
   elseif y >= 540 and y < 620 then
+    status = "Choose a JPEG or import by URL"
     open_pictures(c)
+  elseif y >= 640 and y < 720 and not pending then
+    open_setup(c)
   else
     return false
   end

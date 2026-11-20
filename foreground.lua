@@ -1,5 +1,5 @@
 
-local PICTURES_PER_PAGE = 8
+local PICTURES_PER_PAGE = 7
 local pictures, page
 
 local function open_pictures(c)
@@ -14,7 +14,8 @@ end
 
 local function draw_pictures(c, g)
   draw_text(c, g, 24, "Lock screen picture")
-  draw_text(c, g, 72, "Copy JPEGs to the app SD folder")
+  draw_text(c, g, 72, status)
+  if editing then return end
   if #pictures == 0 then draw_text(c, g, 140, "No JPEGs found") end
   local selected = selected_wallpaper(c)
   for row = 1, PICTURES_PER_PAGE do
@@ -24,12 +25,47 @@ local function draw_pictures(c, g)
     if #name > 34 then label = label .. "..." end
     draw_text(c, g, 130 + (row - 1) * 52, (name == selected and "* " or "") .. label)
   end
-  if #pictures > PICTURES_PER_PAGE then draw_text(c, g, 560, "Next page") end
-  draw_text(c, g, 625, "Use default screen")
-  draw_text(c, g, 690, "Back")
+  if #pictures > PICTURES_PER_PAGE then draw_button(c, g, 510, "Next page") end
+  draw_button(c, g, 560, "Import JPEG from URL")
+  draw_button(c, g, 625, "Use default screen")
+  draw_button(c, g, 690, "Back")
+end
+
+local function import_picture(c, url)
+  if not url:match("^https://[^%s/@?#]+/[^%s]+$") then
+    status = "Enter a direct HTTPS JPEG URL"
+    return
+  end
+  local name = selected_wallpaper(c) == "downloaded.jpg" and "downloaded-alt.jpg" or "downloaded.jpg"
+  pending, status = true, "Downloading picture..."
+  local ok, job = pcall(function()
+    return c.net:request({
+      url = url,
+      timeout_ms = 20000,
+      save = {to = "files", name = name},
+    }, function(context, reply)
+      pending = false
+      local code = reply and tonumber(reply.status or reply.code)
+      local image = code == 200 and reply.saved and load_wallpaper(context, name)
+      if image then
+        pcall(function() image:release() end)
+        status = save_wallpaper(context, name) and "Lock screen picture saved" or "Could not save picture"
+        pictures = nil
+      else
+        pcall(function() context.storage:remove(name) end)
+        status = "Use a direct JPEG up to 480 x 800"
+        open_pictures(context)
+      end
+      context:invalidate()
+    end)
+  end)
+  if not ok or not job then
+    pending, status = false, "Could not start download"
+  end
 end
 
 local function pick_picture(c, y)
+  if pending then return end
   if y >= 120 and y < 120 + PICTURES_PER_PAGE * 52 then
     local row = (y - 120) // 52 + 1
     local name = pictures[(page - 1) * PICTURES_PER_PAGE + row]
@@ -42,8 +78,10 @@ local function pick_picture(c, y)
       status = "Use a JPEG up to 480 x 800"
     end
     pictures = nil
-  elseif y >= 550 and y < 610 and #pictures > PICTURES_PER_PAGE then
+  elseif y >= 495 and y < 545 and #pictures > PICTURES_PER_PAGE then
     page = page % math.ceil(#pictures / PICTURES_PER_PAGE) + 1
+  elseif y >= 550 and y < 610 then
+    edit_field(c, "Direct HTTPS JPEG URL", "", 512, import_picture)
   elseif y >= 615 and y < 675 then
     status = save_wallpaper(c) and "Default lock screen selected" or "Could not save choice"
     pictures = nil
@@ -57,25 +95,30 @@ function on_load() end
 function on_draw(c, g)
   g:clear(0)
   if pictures then return draw_pictures(c, g) end
+  if setup_open then return draw_setup(c, g) end
   draw_text(c, g, 24, "StoryGraph Sync")
   draw_text(c, g, 73, status)
-  local ok, book = pcall(function() return c.reader:current() end)
-  if ok and type(book) == "table" and book.id then
+  local book = current_book(c)
+  if book then
     draw_text(c, g, 130, "Reader book ID")
     draw_text(c, g, 167, tostring(book.id))
   else
     draw_text(c, g, 130, "Open a book to see its ID")
   end
-  draw_text(c, g, 262, "Sync now")
-  draw_text(c, g, 362, "Enable automatic sync")
-  draw_text(c, g, 462, "Disable automatic sync")
-  draw_text(c, g, 562, "Choose lock screen picture")
+  draw_button(c, g, 262, "Sync now")
+  draw_button(c, g, 362, "Enable automatic sync")
+  draw_button(c, g, 462, "Disable automatic sync")
+  draw_button(c, g, 562, "Choose lock screen picture")
+  draw_button(c, g, 662, "StoryGraph setup")
 end
 
 function on_input(c, event)
+  if editing then return false end
   if event.type ~= "pointer" or event.phase ~= "up" then return false end
   local y = event.y or 0
-  if pictures then
+  if setup_open then
+    setup_input(c, y)
+  elseif pictures then
     pick_picture(c, y)
   elseif y >= 240 and y < 320 then
     sync()
@@ -88,7 +131,10 @@ function on_input(c, event)
     end)
     status = ok and result ~= false and "Automatic sync disabled" or "Could not disable sync"
   elseif y >= 540 and y < 620 then
+    status = "Choose a JPEG or import by URL"
     open_pictures(c)
+  elseif y >= 640 and y < 720 and not pending then
+    open_setup(c)
   else
     return false
   end
