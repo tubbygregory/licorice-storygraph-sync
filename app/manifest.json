@@ -1,0 +1,11 @@
+{
+  "app_id": "storygraph",
+  "display_name": "StoryGraph Sync",
+  "version": "0.1.0",
+  "author": "Community",
+  "description": "Send mapped book progress to a local StoryGraph bridge while locked.",
+  "entry": "index.lua",
+  "api": "2.26",
+  "permissions": ["reader", "net"],
+  "lockscreen": {"enabled": true, "entry": "lockscreen.lua", "interval_sec": 900, "net": true}
+}

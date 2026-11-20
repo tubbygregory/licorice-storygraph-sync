@@ -1,0 +1,52 @@
+StoryGraph via Licorice's built-in KOReader Sync
+================================================
+This experimental setup keeps your regular lock screen and uses the
+firmware's built-in sync. It requires a computer running the bridge and
+a Licorice build that sends progress to a custom KOReader Sync server.
+Automatic sending by Licorice has not been verified on hardware.
+
+1. Install requirements.txt and set STORYGRAPH_COOKIE as described in
+   step 4 of README.txt. Use kosync.py in place of bridge.py.
+2. Create kosync.json on the computer:
+
+   {
+     "username": "xteink",
+     "password": "replace-with-a-dedicated-random-password",
+     "books": {}
+   }
+
+   Generate a password with:
+     python -c "import secrets; print(secrets.token_urlsafe(24))"
+
+   Run:
+     python kosync.py --bind 192.168.1.20
+
+   Substitute your computer's LAN address. Run one bridge mode at a time
+   or use separate ports. Use a trusted private network for HTTP.
+   For HTTPS, put the bridge behind a reverse proxy with a certificate
+   accepted by the device. Keep it off the public Internet.
+3. Open KOReader Sync on the reader. Set the custom server base URL,
+   for example http://192.168.1.20:8765, and enter the username and
+   password from kosync.json. Use Save account for the existing local
+   account. The bridge implements the standard KOSync authentication
+   and progress endpoints for that one configured account.
+4. Open a book, read a few pages, and exit to the bookshelf or let
+   the reader sleep. Check the log for 'Progress received' before
+   using a manual sync. If no push arrives on its own, try the
+   device's manual sync to confirm connectivity. A successful manual
+   push alone does not establish automatic syncing on your build.
+5. Use the document ID shown in the log as the key in "books". Use
+   the StoryGraph /books/ edition UUID as its value. Mark that
+   edition Currently Reading in StoryGraph and restart the bridge.
+   Saved progress is processed within the next worker pass (every
+   30 seconds). Repeat the mapping for each new book.
+
+The bridge retains the latest native reading position and the highest
+percentage for StoryGraph in kosync.sqlite3. Failed StoryGraph updates
+retry automatically. It sends progress, with no start/finish status
+changes or session history. The max-progress policy does not track
+rereads. StoryGraph's website form is unofficial and may change.
+If the firmware lacks a usable automatic push, the original lock
+screen InkApp remains available as described in README.txt.
+
+Protocol reference: https://github.com/koreader/koreader-sync-server
